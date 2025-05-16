@@ -167,7 +167,7 @@ export const Navigation = () => {
             </Link>
 
             {/* User Menu */}
-            <div className="relative user-menu-container">
+            <div className="relative">
               {isAuthenticated ? (
                 <button
                   onClick={toggleProfileMenu}
@@ -201,7 +201,7 @@ export const Navigation = () => {
                   transition={{ duration: 0.2 }}
                   className={`absolute right-0 mt-2 w-64 rounded-md shadow-lg py-1 ${
                     isDarkMode ? 'bg-gray-800' : 'bg-white'
-                  } ring-1 ring-black ring-opacity-5`}
+                  } ring-1 ring-black ring-opacity-5 z-50`}
                 >
                   <div className={`px-4 py-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                     <div className="font-medium">{currentUser?.firstName} {currentUser?.lastName}</div>

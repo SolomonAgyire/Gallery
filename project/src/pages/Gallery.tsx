@@ -1,79 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Heart, ShoppingCart, Camera, Video } from 'lucide-react';
+import { Heart, ShoppingCart, Video } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-
-// Import local images
-import image1 from '../img/image1.jpg';
-import image2 from '../img/image2.jpg';
-import image3 from '../img/image3.jpg';
-import image4 from '../img/image4.jpg';
-
-// Sample artwork data
-const artworks = [
-  {
-    id: "1",
-    title: 'Vibrant Abstraction',
-    imageUrl: image1,
-    artist: 'You',
-    dimensions: '24" x 36"',
-    medium: 'Acrylic on Canvas',
-    price: 1200,
-    description: 'A vibrant abstract painting with bold colors and dynamic composition.'
-  },
-  {
-    id: "2",
-    title: 'Serene Landscape',
-    imageUrl: image2,
-    artist: 'You',
-    dimensions: '30" x 40"',
-    medium: 'Oil on Canvas',
-    price: 1800,
-    description: 'A peaceful landscape depicting rolling hills and a calm lake at sunset.'
-  },
-  {
-    id: "3",
-    title: 'Emotional Expression',
-    imageUrl: image3,
-    artist: 'You',
-    dimensions: '18" x 24"',
-    medium: 'Mixed Media',
-    price: 950,
-    description: 'An expressive piece that conveys deep emotion through texture and color.'
-  },
-  {
-    id: "4",
-    title: 'Modern Composition',
-    imageUrl: image4,
-    artist: 'You',
-    dimensions: '24" x 24"',
-    medium: 'Acrylic on Canvas',
-    price: 1500,
-    description: 'A modern composition with geometric elements and a sophisticated color palette.'
-  },
-  {
-    id: "5",
-    title: 'Nature\'s Whisper',
-    imageUrl: 'https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=744&q=80',
-    artist: 'Olivia Parker',
-    dimensions: '36" x 48"',
-    medium: 'Mixed Media',
-    price: 2200,
-    description: 'A captivating nature scene that whispers the secrets of the forest.'
-  },
-  {
-    id: "6",
-    title: 'Geometric Visions',
-    imageUrl: 'https://images.unsplash.com/photo-1577083552431-6e5fd01aa342?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80',
-    artist: 'David Kim',
-    dimensions: '20" x 30"',
-    medium: 'Acrylic on Wood',
-    price: 1500,
-    description: 'A visionary geometric composition with precise forms and vibrant colors.'
-  }
-];
 
 export const Gallery = () => {
   const { 
@@ -82,7 +12,8 @@ export const Gallery = () => {
     addToFavorites, 
     removeFromFavorites, 
     isInFavorites, 
-    isDarkMode 
+    isDarkMode,
+    artworks
   } = useAppContext();
   
   const { isAuthenticated } = useAuth();
@@ -248,50 +179,34 @@ export const Gallery = () => {
       {/* Authentication Modal */}
       {showAuthModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className={`rounded-lg shadow-xl w-full max-w-md p-6 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}
-          >
-            <h2 className="text-xl font-bold mb-4">
-              {authModalAction === 'cart' ? 'Add to Cart' : 'Add to Favorites'}
-            </h2>
-            <p className="mb-4">
-              You need to be signed in to {authModalAction === 'cart' ? 'add items to your cart' : 'save favorites'}. 
-              Please sign in or create an account to continue.
+          <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} max-w-md w-full mx-4`}>
+            <h2 className="text-xl font-semibold mb-4">Sign in required</h2>
+            <p className="mb-6">
+              {authModalAction === 'cart' 
+                ? 'Please sign in to add items to your cart.' 
+                : 'Please sign in to add items to your favorites.'}
             </p>
-            <div className={`mb-6 p-4 rounded-lg ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
-              <p className={`text-sm ${isDarkMode ? 'text-blue-200' : 'text-blue-700'}`}>
-                <strong>Note:</strong> For testing purposes, you can use the demo account:
-                <br />
-                Email: <span className="font-medium">demo@example.com</span>
-                <br />
-                Password: <span className="font-medium">Password123</span>
-              </p>
-            </div>
             <div className="flex flex-col space-y-3">
               <button
-                onClick={() => setShowAuthModal(false)}
-                className={`py-2 rounded-lg ${
-                  isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-                }`}
-              >
-                Cancel
-              </button>
-              <button
                 onClick={handleSignIn}
-                className="py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition-colors"
               >
                 Sign In
               </button>
               <button
                 onClick={handleSignUp}
-                className="py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white"
+                className="w-full bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300 transition-colors"
               >
                 Create Account
               </button>
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="w-full text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
             </div>
-          </motion.div>
+          </div>
         </div>
       )}
     </div>

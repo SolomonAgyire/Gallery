@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { artworkData } from '../data/artworkData';
 
 // Define the Artwork type with quantity
 export interface Artwork {
@@ -14,54 +15,6 @@ export interface Artwork {
   quantity?: number;
 }
 
-// Sample artwork data
-const artworkData: Artwork[] = [
-  {
-    id: '1',
-    title: 'Sunset Horizon',
-    artist: 'Emma Johnson',
-    description: 'A vibrant depiction of a sunset over calm waters, with rich oranges and purples reflecting on the surface.',
-    price: 1200,
-    imageUrl: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1074&q=80',
-    dimensions: '24" x 36"',
-    medium: 'Oil on canvas',
-    year: '2022'
-  },
-  {
-    id: '2',
-    title: 'Urban Rhythm',
-    artist: 'Marcus Chen',
-    description: 'An abstract representation of city life, with geometric shapes and bold colors creating a sense of movement and energy.',
-    price: 950,
-    imageUrl: 'https://images.unsplash.com/photo-1549887552-cb1071d3e5ca?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=765&q=80',
-    dimensions: '30" x 30"',
-    medium: 'Acrylic on canvas',
-    year: '2021'
-  },
-  {
-    id: '3',
-    title: 'Serene Forest',
-    artist: 'Olivia Martinez',
-    description: 'A peaceful forest scene with sunlight filtering through the trees, creating a sense of tranquility and harmony with nature.',
-    price: 1500,
-    imageUrl: 'https://images.unsplash.com/photo-1518021964703-4b2030f03085?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1074&q=80',
-    dimensions: '36" x 48"',
-    medium: 'Oil on canvas',
-    year: '2023'
-  },
-  {
-    id: '4',
-    title: 'Coastal Dreams',
-    artist: 'James Wilson',
-    description: 'A dreamy coastal landscape with soft waves crashing against rocky shores, evoking a sense of nostalgia and longing.',
-    price: 1100,
-    imageUrl: 'https://images.unsplash.com/photo-1518623489648-a173ef7824f3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1074&q=80',
-    dimensions: '24" x 36"',
-    medium: 'Watercolor on paper',
-    year: '2022'
-  }
-];
-
 export interface AppContextType {
   isDarkMode: boolean;
   toggleDarkMode: () => void;
@@ -69,6 +22,7 @@ export interface AppContextType {
   addToCart: (artwork: Artwork) => void;
   removeFromCart: (id: string) => void;
   updateCartItemQuantity: (id: string, quantity: number) => void;
+  clearCart: () => void;
   isInCart: (id: string) => boolean;
   cartTotal: number;
   favorites: string[];
@@ -84,7 +38,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [cart, setCart] = useState<Artwork[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [artworks] = useState<Artwork[]>(artworkData);
+  const [artworks, setArtworks] = useState<Artwork[]>(artworkData);
 
   // Initialize dark mode from localStorage
   useEffect(() => {
@@ -138,11 +92,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addToCart = (artwork: Artwork) => {
     setCart(prevCart => {
-      // Check if the artwork is already in the cart
       const existingItemIndex = prevCart.findIndex(item => item.id === artwork.id);
       
       if (existingItemIndex >= 0) {
-        // If it exists, update the quantity
         const updatedCart = [...prevCart];
         const currentQuantity = updatedCart[existingItemIndex].quantity || 1;
         updatedCart[existingItemIndex] = {
@@ -151,7 +103,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         return updatedCart;
       } else {
-        // If it doesn't exist, add it with quantity 1
         return [...prevCart, { ...artwork, quantity: 1 }];
       }
     });
@@ -171,6 +122,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isInCart = (id: string) => {
     return cart.some(item => item.id === id);
+  };
+
+  const clearCart = () => {
+    setCart([]);
   };
 
   const cartTotal = cart.reduce((total, item) => {
@@ -203,6 +158,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addToCart,
         removeFromCart,
         updateCartItemQuantity,
+        clearCart,
         isInCart,
         cartTotal,
         favorites,

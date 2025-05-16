@@ -3,11 +3,12 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { FeaturedArtworks } from '../components/FeaturedArtworks';
-import { featuredArtworks } from '../data/artworks';
+import { useAppContext } from '../context/AppContext';
 
 export const Home = () => {
+  const { artworks } = useAppContext();
   // Take only the first three artworks for featured section
-  const featuredThree = featuredArtworks.slice(0, 3);
+  const featuredThree = artworks.slice(0, 3);
 
   return (
     <main className="bg-white">

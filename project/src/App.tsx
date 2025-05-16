@@ -8,10 +8,13 @@ import { About } from './pages/About';
 import { SignIn } from './pages/SignIn';
 import { SignUp } from './pages/SignUp';
 import { Cart } from './pages/Cart';
+import { Checkout } from './pages/Checkout';
+import { PaymentSuccess } from './pages/PaymentSuccess';
 import { Favorites } from './pages/Favorites';
 import { Profile } from './pages/Profile';
 import { ARPreview } from './pages/ARPreview';
 import { ARPreviewLanding } from './pages/ARPreviewLanding';
+import { AuthCallback } from './pages/AuthCallback';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -63,6 +66,22 @@ function App() {
                   } 
                 />
                 <Route 
+                  path="/checkout" 
+                  element={
+                    <ProtectedRoute>
+                      <Checkout />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/payment-success" 
+                  element={
+                    <ProtectedRoute>
+                      <PaymentSuccess />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
                   path="/favorites" 
                   element={
                     <ProtectedRoute>
@@ -78,6 +97,9 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
+                
+                {/* Auth Callback */}
+                <Route path="/auth/callback" element={<AuthCallback />} />
                 
                 {/* Fallback route */}
                 <Route path="*" element={<Navigate to="/" replace />} />

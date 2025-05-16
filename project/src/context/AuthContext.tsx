@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createClient, SupabaseClient, User as SupabaseUser } from '@supabase/supabase-js';
 
 // Define user interface
 export interface User {
@@ -10,7 +11,7 @@ export interface User {
   isEmailVerified: boolean;
   createdAt: Date;
   lastLoginAt: Date;
-  provider?: string; // 'firebase' or 'email'
+  provider?: string;
 }
 
 // Define auth context interface
@@ -20,6 +21,7 @@ interface AuthContextType {
   error: string | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   signup: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -32,13 +34,15 @@ interface AuthContextType {
 // Create the context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock user database for local development
-interface StoredUser extends User {
-  password: string;
+// Initialize Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables');
 }
 
-// Environment check - in a real app, you would use environment variables
-const IS_DEVELOPMENT = true; // Set to false for production
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
 // Provider component
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -48,55 +52,90 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isVerificationEmailSent, setIsVerificationEmailSent] = useState<boolean>(false);
 
-  // Initialize mock user database if it doesn't exist
+  // Check for stored user on mount and set up auth state listener
   useEffect(() => {
-    if (!localStorage.getItem('mockUserDb')) {
-      // Create an empty database
-      localStorage.setItem('mockUserDb', JSON.stringify([]));
-    }
-    
-    // Add a demo account if it doesn't exist
-    const mockDb = localStorage.getItem('mockUserDb');
-    const users: StoredUser[] = mockDb ? JSON.parse(mockDb) : [];
-    
-    if (!users.some(u => u.email === 'demo@example.com')) {
-      // Create demo user
-      const demoUser: StoredUser = {
-        id: 'demo_user',
-        email: 'demo@example.com',
-        firstName: 'Demo',
-        lastName: 'User',
-        isEmailVerified: true,
-        provider: 'email',
-        createdAt: new Date(),
-        lastLoginAt: new Date(),
-        password: 'Password123'
-      };
+    // Get initial session
+    const getInitialSession = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        if (session?.user) {
+          await handleUserSession(session.user);
+        } else {
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        console.error('Error getting initial session:', err);
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    getInitialSession();
+
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.email);
       
-      users.push(demoUser);
-      localStorage.setItem('mockUserDb', JSON.stringify(users));
-      console.log('Demo account created: demo@example.com / Password123');
-    }
+      if (event === 'SIGNED_IN' && session?.user) {
+        await handleUserSession(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        setError(null);
+      } else if (event === 'USER_UPDATED' && session?.user) {
+        await handleUserSession(session.user);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // Check for stored user on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        // Convert date strings back to Date objects
-        parsedUser.createdAt = new Date(parsedUser.createdAt);
-        parsedUser.lastLoginAt = new Date(parsedUser.lastLoginAt);
-        setCurrentUser(parsedUser);
-        setIsAuthenticated(true);
-      } catch (err) {
-        console.error('Failed to parse stored user:', err);
-        localStorage.removeItem('currentUser');
+  // Helper function to handle user session
+  const handleUserSession = async (supabaseUser: SupabaseUser) => {
+    try {
+      // Get additional user data from your profiles table
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', supabaseUser.id)
+        .single();
+
+      if (profileError) {
+        throw profileError;
       }
+
+      const user: User = {
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        firstName: profile?.first_name || supabaseUser.user_metadata?.first_name,
+        lastName: profile?.last_name || supabaseUser.user_metadata?.last_name,
+        photoURL: supabaseUser.user_metadata?.avatar_url,
+        isEmailVerified: supabaseUser.email_confirmed_at !== null,
+        provider: supabaseUser.app_metadata?.provider,
+        createdAt: new Date(supabaseUser.created_at),
+        lastLoginAt: new Date()
+      };
+
+      setCurrentUser(user);
+      setIsAuthenticated(true);
+      setError(null);
+    } catch (err) {
+      console.error('Error handling user session:', err);
+      setError('Failed to load user data');
+      setCurrentUser(null);
+      setIsAuthenticated(false);
     }
-    setIsLoading(false);
-  }, []);
+  };
 
   // Login with email and password
   const login = async (email: string, password: string) => {
@@ -104,83 +143,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      if (IS_DEVELOPMENT) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check our mock database for this user
-        const mockDb = localStorage.getItem('mockUserDb');
-        const users: StoredUser[] = mockDb ? JSON.parse(mockDb) : [];
-        
-        const user = users.find(u => u.email === email);
-        
-        if (!user) {
-          throw new Error('No account found with this email. Please sign up first.');
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (signInError) {
+        throw signInError;
+      }
+
+      if (!data.user) {
+        throw new Error('No user data returned');
+      }
+
+      await handleUserSession(data.user);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to login';
+      setError(errorMessage);
+      console.error('Login error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Login with Google
+  const loginWithGoogle = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
         }
-        
-        if (user.password !== password) {
-          throw new Error('Incorrect password. Please try again.');
-        }
-        
-        // Update last login time
-        user.lastLoginAt = new Date();
-        localStorage.setItem('mockUserDb', JSON.stringify(users));
-        
-        // Remove password before setting as current user
-        const { password: _, ...userWithoutPassword } = user;
-        
-        setCurrentUser(userWithoutPassword);
-        setIsAuthenticated(true);
-        localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-        
-        // If email is not verified, automatically send verification email
-        if (!user.isEmailVerified && user.provider === 'email') {
-          await sendVerificationEmail();
-        }
-      } else {
-        // PRODUCTION IMPLEMENTATION WITH FIREBASE
-        // This is where you would implement Firebase authentication
-        // Example:
-        /*
-        try {
-          const userCredential = await signInWithEmailAndPassword(auth, email, password);
-          const firebaseUser = userCredential.user;
-          
-          // Create user object from Firebase user
-          const user: User = {
-            id: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            firstName: firebaseUser.displayName?.split(' ')[0] || '',
-            lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || '',
-            photoURL: firebaseUser.photoURL || undefined,
-            isEmailVerified: firebaseUser.emailVerified,
-            provider: 'firebase',
-            createdAt: new Date(firebaseUser.metadata.creationTime || Date.now()),
-            lastLoginAt: new Date(firebaseUser.metadata.lastSignInTime || Date.now())
-          };
-          
-          setCurrentUser(user);
-          setIsAuthenticated(true);
-          localStorage.setItem('currentUser', JSON.stringify(user));
-          
-          // If email is not verified, automatically send verification email
-          if (!user.isEmailVerified) {
-            await sendVerificationEmail();
-          }
-        } catch (error) {
-          if (error.code === 'auth/user-not-found') {
-            throw new Error('No account found with this email. Please sign up first.');
-          } else if (error.code === 'auth/wrong-password') {
-            throw new Error('Incorrect password. Please try again.');
-          } else {
-            throw new Error('Failed to sign in. Please try again.');
-          }
-        }
-        */
+      });
+
+      if (error) {
+        throw error;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to login. Please check your credentials.');
-      console.error('Login error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to login with Google';
+      setError(errorMessage);
+      console.error('Google login error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -191,25 +196,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     
     try {
-      if (IS_DEVELOPMENT) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        setCurrentUser(null);
-        setIsAuthenticated(false);
-        localStorage.removeItem('currentUser');
-      } else {
-        // PRODUCTION IMPLEMENTATION WITH FIREBASE
-        // Example:
-        /*
-        await signOut(auth);
-        setCurrentUser(null);
-        setIsAuthenticated(false);
-        localStorage.removeItem('currentUser');
-        */
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        throw error;
       }
+
+      setCurrentUser(null);
+      setIsAuthenticated(false);
     } catch (err) {
       console.error('Logout error:', err);
+      setError('Failed to logout');
     } finally {
       setIsLoading(false);
     }
@@ -221,87 +218,56 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      if (IS_DEVELOPMENT) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check if user already exists in our mock database
-        const mockDb = localStorage.getItem('mockUserDb');
-        const users: StoredUser[] = mockDb ? JSON.parse(mockDb) : [];
-        
-        if (users.some(u => u.email === email)) {
-          throw new Error('An account with this email already exists. Please sign in instead.');
-        }
-        
-        // Create new user
-        const newUser: StoredUser = {
-          id: `user_${Date.now()}`,
-          email,
-          firstName,
-          lastName,
-          isEmailVerified: false,
-          provider: 'email',
-          createdAt: new Date(),
-          lastLoginAt: new Date(),
-          password // In a real app, this would be hashed
-        };
-        
-        // Add to mock database
-        users.push(newUser);
-        localStorage.setItem('mockUserDb', JSON.stringify(users));
-        
-        // Remove password before setting as current user
-        const { password: _, ...userWithoutPassword } = newUser;
-        
-        setCurrentUser(userWithoutPassword);
-        setIsAuthenticated(true);
-        localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-        
-        // Send verification email automatically for new signups
-        await sendVerificationEmail();
-      } else {
-        // PRODUCTION IMPLEMENTATION WITH FIREBASE
-        // Example:
-        /*
-        try {
-          // Create user with email and password
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-          const firebaseUser = userCredential.user;
-          
-          // Update profile with name
-          await updateProfile(firebaseUser, {
-            displayName: `${firstName} ${lastName}`
-          });
-          
-          // Create user object
-          const user: User = {
-            id: firebaseUser.uid,
-            email: email,
-            firstName: firstName,
-            lastName: lastName,
-            isEmailVerified: false,
-            provider: 'firebase',
-            createdAt: new Date(),
-            lastLoginAt: new Date()
-          };
-          
-          setCurrentUser(user);
-          setIsAuthenticated(true);
-          localStorage.setItem('currentUser', JSON.stringify(user));
-          
-          // Send verification email
-          await sendVerificationEmail();
-        } catch (error) {
-          if (error.code === 'auth/email-already-in-use') {
-            throw new Error('An account with this email already exists. Please sign in instead.');
-          } else {
-            throw new Error('Failed to create account. Please try again.');
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName
           }
         }
-        */
+      });
+
+      if (signUpError) {
+        throw signUpError;
       }
+
+      if (!data.user) {
+        throw new Error('No user data returned');
+      }
+
+      // Create profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: data.user.id,
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            updated_at: new Date().toISOString()
+          }
+        ]);
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+      }
+
+      setIsVerificationEmailSent(true);
+      setCurrentUser({
+        id: data.user.id,
+        email: data.user.email || '',
+        firstName,
+        lastName,
+        isEmailVerified: false,
+        createdAt: new Date(data.user.created_at),
+        lastLoginAt: new Date()
+      });
+      setIsAuthenticated(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create account. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create account';
+      setError(errorMessage);
       console.error('Signup error:', err);
     } finally {
       setIsLoading(false);
@@ -314,48 +280,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      if (IS_DEVELOPMENT) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check if user exists in our mock database
-        const mockDb = localStorage.getItem('mockUserDb');
-        const users: StoredUser[] = mockDb ? JSON.parse(mockDb) : [];
-        
-        const user = users.find(u => u.email === email);
-        
-        if (!user) {
-          throw new Error('No account found with this email address.');
-        }
-        
-        // In a real app, this would send a password reset email
-        console.log('Password reset email would be sent to:', email);
-        
-        // For demo purposes, we'll just reset the password to a known value
-        if (user.provider === 'email') {
-          user.password = 'Password123'; // In a real app, this would be a temporary token
-          localStorage.setItem('mockUserDb', JSON.stringify(users));
-        } else {
-          throw new Error('Password reset is not available for accounts created with Firebase Sign-In.');
-        }
-      } else {
-        // PRODUCTION IMPLEMENTATION WITH FIREBASE
-        // Example:
-        /*
-        try {
-          await sendPasswordResetEmail(auth, email);
-        } catch (error) {
-          if (error.code === 'auth/user-not-found') {
-            throw new Error('No account found with this email address.');
-          } else {
-            throw new Error('Failed to send password reset email. Please try again.');
-          }
-        }
-        */
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
+
+      if (error) {
+        throw error;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send password reset email. Please try again.');
-      console.error('Password reset error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send reset password email';
+      setError(errorMessage);
+      console.error('Reset password error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -367,74 +302,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      if (IS_DEVELOPMENT) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        if (currentUser) {
-          // Update user in mock database
-          const mockDb = localStorage.getItem('mockUserDb');
-          const users: StoredUser[] = mockDb ? JSON.parse(mockDb) : [];
-          
-          const userIndex = users.findIndex(u => u.id === currentUser.id);
-          
-          if (userIndex >= 0) {
-            // If email is being changed, reset verification status
-            if (data.email && data.email !== users[userIndex].email) {
-              data.isEmailVerified = false;
-            }
-            
-            // Update user data
-            users[userIndex] = {
-              ...users[userIndex],
-              ...data,
-              lastLoginAt: new Date()
-            };
-            
-            localStorage.setItem('mockUserDb', JSON.stringify(users));
-            
-            // Update current user
-            const updatedUser = { ...currentUser, ...data, lastLoginAt: new Date() };
-            setCurrentUser(updatedUser);
-            localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-          }
+      // Update auth metadata
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          first_name: data.firstName,
+          last_name: data.lastName
         }
-      } else {
-        // PRODUCTION IMPLEMENTATION WITH FIREBASE
-        // Example:
-        /*
-        if (currentUser) {
-          const firebaseUser = auth.currentUser;
-          
-          if (firebaseUser) {
-            // Update display name if first or last name changed
-            if (data.firstName || data.lastName) {
-              const newFirstName = data.firstName || currentUser.firstName || '';
-              const newLastName = data.lastName || currentUser.lastName || '';
-              await updateProfile(firebaseUser, {
-                displayName: `${newFirstName} ${newLastName}`
-              });
-            }
-            
-            // Update email if changed
-            if (data.email && data.email !== currentUser.email) {
-              await updateEmail(firebaseUser, data.email);
-              // Email verification status will be reset automatically by Firebase
-              data.isEmailVerified = false;
-              await sendVerificationEmail();
-            }
-            
-            // Update user in state
-            const updatedUser = { ...currentUser, ...data, lastLoginAt: new Date() };
-            setCurrentUser(updatedUser);
-            localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-          }
-        }
-        */
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      // Update profile in profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          first_name: data.firstName,
+          last_name: data.lastName
+        })
+        .eq('id', currentUser?.id);
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      // Update local state
+      if (currentUser) {
+        setCurrentUser({
+          ...currentUser,
+          ...data
+        });
       }
     } catch (err) {
-      setError('Failed to update profile. Please try again.');
-      console.error('Profile update error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update profile';
+      setError(errorMessage);
+      console.error('Update profile error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -446,38 +349,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      if (IS_DEVELOPMENT) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        if (currentUser) {
-          console.log(`Verification email sent to: ${currentUser.email}`);
-          setIsVerificationEmailSent(true);
-          
-          // Reset the flag after 5 minutes
-          setTimeout(() => {
-            setIsVerificationEmailSent(false);
-          }, 5 * 60 * 1000);
-        }
-      } else {
-        // PRODUCTION IMPLEMENTATION WITH FIREBASE
-        // Example:
-        /*
-        const firebaseUser = auth.currentUser;
-        if (firebaseUser) {
-          await sendEmailVerification(firebaseUser);
-          setIsVerificationEmailSent(true);
-          
-          // Reset the flag after 5 minutes
-          setTimeout(() => {
-            setIsVerificationEmailSent(false);
-          }, 5 * 60 * 1000);
-        }
-        */
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: currentUser?.email || ''
+      });
+
+      if (error) {
+        throw error;
       }
+
+      setIsVerificationEmailSent(true);
     } catch (err) {
-      setError('Failed to send verification email. Please try again.');
-      console.error('Email verification sending error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send verification email';
+      setError(errorMessage);
+      console.error('Send verification email error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -489,48 +374,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      if (IS_DEVELOPMENT) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        if (currentUser) {
-          // Update user in mock database
-          const mockDb = localStorage.getItem('mockUserDb');
-          const users: StoredUser[] = mockDb ? JSON.parse(mockDb) : [];
-          
-          const userIndex = users.findIndex(u => u.id === currentUser.id);
-          
-          if (userIndex >= 0) {
-            users[userIndex].isEmailVerified = true;
-            localStorage.setItem('mockUserDb', JSON.stringify(users));
-            
-            // Update current user
-            const verifiedUser = { ...currentUser, isEmailVerified: true };
-            setCurrentUser(verifiedUser);
-            localStorage.setItem('currentUser', JSON.stringify(verifiedUser));
-          }
-        }
-      } else {
-        // PRODUCTION IMPLEMENTATION WITH FIREBASE
-        // In Firebase, email verification is handled via the verification link sent to the user's email
-        // This function would typically be used to refresh the user's verification status
-        // Example:
-        /*
-        const firebaseUser = auth.currentUser;
-        if (firebaseUser) {
-          await firebaseUser.reload();
-          
-          if (firebaseUser.emailVerified) {
-            const verifiedUser = { ...currentUser, isEmailVerified: true };
-            setCurrentUser(verifiedUser);
-            localStorage.setItem('currentUser', JSON.stringify(verifiedUser));
-          }
-        }
-        */
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: window.location.hash,
+        type: 'email'
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // Refresh user session to get updated email verification status
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await handleUserSession(session.user);
       }
     } catch (err) {
-      setError('Failed to verify email. Please try again.');
-      console.error('Email verification error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to verify email';
+      setError(errorMessage);
+      console.error('Verify email error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -542,6 +403,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     error,
     isAuthenticated,
     login,
+    loginWithGoogle,
     logout,
     signup,
     resetPassword,
@@ -558,7 +420,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
-// Custom hook to use the auth context
+// Custom hook to use auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
