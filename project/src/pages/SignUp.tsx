@@ -12,7 +12,7 @@ interface LocationState {
 
 export const SignUp = () => {
   const { isDarkMode } = useAppContext();
-  const { signup, isLoading, error, isAuthenticated, currentUser, isVerificationEmailSent } = useAuth();
+  const { signUp, isLoading, error, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -39,20 +39,14 @@ export const SignUp = () => {
   
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showVerificationSuccess, setShowVerificationSuccess] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
   
   // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated && !showVerificationSuccess) {
-      // If user just signed up, show verification success
-      if (currentUser && !currentUser.isEmailVerified && currentUser.provider === 'email') {
-        setShowVerificationSuccess(true);
-      } else {
-        // Otherwise, redirect to the intended page
-        navigate(from, { replace: true });
-      }
+    if (isAuthenticated) {
+      navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate, from, currentUser, showVerificationSuccess]);
+  }, [isAuthenticated, navigate, from]);
   
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -131,29 +125,19 @@ export const SignUp = () => {
     if (!validateForm()) return;
     
     try {
-      await signup(formData.email, formData.password, formData.firstName, formData.lastName);
-      // Redirect or show verification success happens in useEffect
+      await signUp(formData.email, formData.password, formData.firstName, formData.lastName);
+      setSignupSuccess(true);
+      // After successful signup, Supabase will send a confirmation email
+      // We'll show a success message and then redirect
+      setTimeout(() => {
+        navigate(from, { replace: true });
+      }, 2000);
     } catch (err) {
-      // If the error indicates the account already exists, provide a link to sign in
-      if (error && error.includes('already exists')) {
-        setTimeout(() => {
-          navigate('/signin', { 
-            state: { 
-              from: from,
-              message: 'An account with this email already exists. Please sign in instead.' 
-            } 
-          });
-        }, 3000);
-      }
       console.error('Signup error:', err);
     }
   };
   
-  const handleContinue = () => {
-    navigate(from, { replace: true });
-  };
-  
-  if (showVerificationSuccess && currentUser) {
+  if (signupSuccess) {
     return (
       <div className={`min-h-screen pt-20 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
         <div className="container mx-auto px-4 py-8">
@@ -168,35 +152,25 @@ export const SignUp = () => {
                 <Mail className="w-8 h-8 text-green-600" />
               </div>
               
-              <h1 className="text-2xl font-bold mb-4">Verify Your Email</h1>
+              <h1 className="text-2xl font-bold mb-4">Account Created Successfully!</h1>
               
               <p className={`mb-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                We've sent a verification email to <span className="font-medium">{currentUser.email}</span>.
-                Please check your inbox and click the verification link to complete your registration.
+                We've sent a confirmation email to <span className="font-medium">{formData.email}</span>.
+                Please check your inbox and click the confirmation link to verify your email address.
               </p>
               
               <div className={`mb-6 p-4 rounded-lg ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
                 <p className={`text-sm ${isDarkMode ? 'text-blue-200' : 'text-blue-700'}`}>
-                  <strong>Note:</strong> You can still browse the gallery, but some features like adding items to cart or favorites will be limited until you verify your email.
+                  <strong>Note:</strong> You can start browsing the gallery now. You'll need to verify your email to complete some actions like adding items to cart.
                 </p>
               </div>
               
-              <div className="flex flex-col space-y-4">
-                <button
-                  onClick={handleContinue}
-                  className="w-full py-3 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                >
-                  Continue to Gallery
-                </button>
-                
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Didn't receive the email? Check your spam folder or{' '}
-                  <Link to="/signin" className="text-blue-600 hover:underline">
-                    sign in
-                  </Link>{' '}
-                  to resend the verification email.
-                </p>
-              </div>
+              <Link
+                to="/gallery"
+                className="block w-full py-3 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+              >
+                Continue to Gallery
+              </Link>
             </div>
           </motion.div>
         </div>

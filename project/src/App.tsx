@@ -14,13 +14,14 @@ import { ARPreview } from './pages/ARPreview';
 import { ARPreviewLanding } from './pages/ARPreviewLanding';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import AuthCallback from './pages/AuthCallback';
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
   
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -50,6 +51,7 @@ function App() {
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/signup" element={<SignUp />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/ar-preview/:id" element={<ARPreview />} />
                 <Route path="/ar-preview" element={<ARPreviewLanding />} />
                 

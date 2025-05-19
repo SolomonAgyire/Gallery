@@ -260,15 +260,6 @@ export const Gallery = () => {
               You need to be signed in to {authModalAction === 'cart' ? 'add items to your cart' : 'save favorites'}. 
               Please sign in or create an account to continue.
             </p>
-            <div className={`mb-6 p-4 rounded-lg ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
-              <p className={`text-sm ${isDarkMode ? 'text-blue-200' : 'text-blue-700'}`}>
-                <strong>Note:</strong> For testing purposes, you can use the demo account:
-                <br />
-                Email: <span className="font-medium">demo@example.com</span>
-                <br />
-                Password: <span className="font-medium">Password123</span>
-              </p>
-            </div>
             <div className="flex flex-col space-y-3">
               <button
                 onClick={() => setShowAuthModal(false)}

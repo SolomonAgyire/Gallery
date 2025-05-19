@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 
 export const Navigation = () => {
   const { isDarkMode, toggleDarkMode, cart, favorites } = useAppContext();
-  const { isAuthenticated, logout, currentUser } = useAuth();
+  const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -32,9 +32,13 @@ export const Navigation = () => {
     setIsProfileMenuOpen(false);
   }, [location.pathname]);
   
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
   
   const toggleMenu = () => {
@@ -168,18 +172,13 @@ export const Navigation = () => {
 
             {/* User Menu */}
             <div className="relative user-menu-container">
-              {isAuthenticated ? (
+              {user ? (
                 <button
                   onClick={toggleProfileMenu}
                   className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors relative"
                   aria-label="User profile"
                 >
                   <User className={`w-5 h-5 ${isDarkMode ? 'text-white' : 'text-gray-700'}`} />
-                  {currentUser && !currentUser.isEmailVerified && (
-                    <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                      !
-                    </span>
-                  )}
                 </button>
               ) : (
                 <Link
@@ -193,7 +192,7 @@ export const Navigation = () => {
               )}
               
               {/* User Dropdown Menu */}
-              {isProfileMenuOpen && isAuthenticated && (
+              {isProfileMenuOpen && user && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -204,21 +203,8 @@ export const Navigation = () => {
                   } ring-1 ring-black ring-opacity-5`}
                 >
                   <div className={`px-4 py-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    <div className="font-medium">{currentUser?.firstName} {currentUser?.lastName}</div>
-                    <div className="text-sm flex items-center">
-                      {currentUser?.email}
-                      {currentUser?.isEmailVerified ? (
-                        <span className="ml-2 flex items-center text-green-500 text-xs">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Verified
-                        </span>
-                      ) : (
-                        <span className="ml-2 flex items-center text-amber-500 text-xs">
-                          <AlertCircle className="w-3 h-3 mr-1" />
-                          Not verified
-                        </span>
-                      )}
-                    </div>
+                    <div className="font-medium text-blue-600">{user.user_metadata?.full_name || user.email}</div>
+                    <div className="text-sm">{user.email}</div>
                   </div>
                   <div className="border-t border-gray-700 my-1"></div>
                   <Link
@@ -229,17 +215,6 @@ export const Navigation = () => {
                   >
                     Profile
                   </Link>
-                  {currentUser && !currentUser.isEmailVerified && (
-                    <Link
-                      to="/verify-email"
-                      className={`block px-4 py-2 text-sm ${
-                        isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
-                      } flex items-center`}
-                    >
-                      <Mail className="w-4 h-4 mr-2 text-amber-500" />
-                      Verify Email
-                    </Link>
-                  )}
                   <button
                     onClick={handleLogout}
                     className={`block w-full text-left px-4 py-2 text-sm ${
@@ -351,7 +326,7 @@ export const Navigation = () => {
                 <span>Cart {cart.length > 0 && `(${cart.length})`}</span>
               </Link>
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
-                {isAuthenticated ? (
+                {user ? (
                   <>
                     <Link
                       to="/profile"
@@ -364,19 +339,6 @@ export const Navigation = () => {
                       <User className="w-5 h-5" />
                       <span>Profile</span>
                     </Link>
-                    {currentUser && !currentUser.isEmailVerified && (
-                      <Link
-                        to="/verify-email"
-                        className={`${
-                          isActive('/verify-email') 
-                            ? isDarkMode ? 'text-white font-medium' : 'text-black font-medium' 
-                            : isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-800 hover:text-gray-600'
-                        } transition-colors flex items-center space-x-2 mt-4`}
-                      >
-                        <Mail className="w-5 h-5 text-amber-500" />
-                        <span>Verify Email</span>
-                      </Link>
-                    )}
                     <button
                       onClick={handleLogout}
                       className={`${
